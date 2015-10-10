@@ -15,33 +15,35 @@ import Data.Text (Text)
 import Data.Text (pack)
 
 stripeKey :: String
-stripeKey = "pk_test_6zhuiwgEyXlswkfcKGT61PAy"
+stripeKey = "pk_test_lUguj0BQnZcICx48ILr9Hzpu"
 
 vegPrice,eggPrice,fruitPrice :: Int
-vegPrice   = 300
-eggPrice   = 30 -- counting by half-shares 
-fruitPrice = 150
+vegPrice   = 240
+eggPrice   = 24 -- counting by half-shares 
+fruitPrice = 120
 
-vegAttr :: forall t. Reflex t => Dynamic t (Map String String)
-vegAttr = constDyn $ "name" =: "vegetableShares"
+vegAttr :: forall t. Reflex t => DropdownConfig t Int
+vegAttr = DropdownConfig never (constDyn $ "name" =: "vegetableShares")
 
-vegOpts = 
+vegOpts :: Reflex t => Dynamic t (Map Int String)
+vegOpts =  constDyn $
   1   =: "One share" <>
   2   =: "Two shares"
 
-fruitAttr :: forall t. Reflex t => Dynamic t (Map String String)
-fruitAttr = constDyn $ "name" =: "fruitShares"
+fruitAttr :: forall t. Reflex t => DropdownConfig t Int
+fruitAttr = DropdownConfig never (constDyn $ "name" =: "fruitShares")
 
-fruitOpts = 
+fruitOpts :: Reflex t => Dynamic t (Map Int String)
+fruitOpts = constDyn $
   0   =: "None" <>
   1   =: "One share" <>
   2   =: "Two shares"
 
-eggAttr :: forall t. Reflex t => Dynamic t (Map String String)
-eggAttr = constDyn $ "name" =: "eggShares"
+eggAttr :: forall t. Reflex t => DropdownConfig t Int
+eggAttr = DropdownConfig never (constDyn $ "name" =: "eggShares")
 
-eggOpts :: Map Int String
-eggOpts = 
+eggOpts :: Reflex t => Dynamic t (Map Int String)
+eggOpts =  constDyn $ 
   0 =: "None" <> 
   1 =: "Half share (6 eggs/week)" <>
   2 =: "Full share (12 eggs/week)" <>
@@ -61,9 +63,9 @@ checkout total = do
   attrs <- mapDyn (\t -> staticAttrs) total
   elDynAttr "script" attrs $ return ()
 
-nameInputConf :: forall t. Reflex t => TextAreaConfig t 
+nameInputConf :: forall t. Reflex t => TextInputConfig t 
 nameInputConf = def 
-  { _textAreaConfig_attributes = constDyn ( "name" =: "shareholder") }
+  { _textInputConfig_attributes = constDyn ( "name" =: "shareholder") }
 
 infixl 4 <<$>>
 (<<$>>) :: (Reflex t, MonadHold t m) => (a -> b) -> Dynamic t a -> m (Dynamic t b)
@@ -73,12 +75,12 @@ infixl 4 <<*>>
 (<<*>>) :: (Reflex t, MonadHold t m) => m (Dynamic t (a -> b)) -> Dynamic t a -> m (Dynamic t b)
 (<<*>>) mf v = mf >>= \f -> combineDyn ($) f v  
 
--- Workaround for my old reflex-dom. Also, we only need the dyn value.
-dropdown'' :: forall k t m. (MonadWidget t m, Ord k, Show k, Read k)
-                => k -> Map k String -> Dynamic t (Map String String)
-                -> m (Dynamic t k)
-dropdown'' k opts attr = _dropdown_value <$>
-  dropdownDynAttr attr k never (constDyn opts)
+-- -- Workaround for my old reflex-dom. Also, we only need the dyn value.
+-- dropdown'' :: forall k t m. (MonadWidget t m, Ord k, Show k, Read k)
+--                 => k -> Map k String -> Dynamic t (Map String String)
+--                 -> m (Dynamic t k)
+-- dropdown'' k opts attr = _dropdown_value <$>
+--   dropdownDynAttr attr k never (constDyn opts)
 
 label :: MonadWidget t m => String -> m a -> m a
 label l i = el "p" . el "label" $ text l >> i
@@ -89,14 +91,13 @@ br = el "br" $ return ()
 main = mainWidgetWithCss $(embedFile "style.css") $ do
   el "h1" $ text "Purchase shares"
   elAttr "form" ( "action" =: "/charge" <> "method" =: "POST") $ do
-    name    <- label "Your name:" $ _textArea_value <$> 
-        textArea nameInputConf 
+    name    <- fmap value . label "Your name:" $ textInput nameInputConf 
     veggies <- label "Vegetable shares: " $
-        mapDyn (vegPrice *)   =<< dropdown'' 1 vegOpts   vegAttr
+        mapDyn (vegPrice *) . value =<< dropdown 1 vegOpts vegAttr
     eggs    <- label "Egg shares:       " $
-        mapDyn (eggPrice *)   =<< dropdown'' 0 eggOpts   eggAttr 
+        mapDyn (eggPrice *) . value =<< dropdown 0 eggOpts eggAttr 
     fruit   <- label "Fruit share:      " $
-        mapDyn (fruitPrice *) =<< dropdown'' 0 fruitOpts fruitAttr
+        mapDyn (fruitPrice *) . value =<< dropdown 0 fruitOpts fruitAttr
 
     let costAttrs c = Map.fromList
                        [("type", "hidden"), ("name", "cost"), ("value", show c)]

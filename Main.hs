@@ -16,22 +16,26 @@ import qualified Data.Map.Strict as Map
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8 (pack, unpack)
 import           Data.Serialize
+import           Data.Text (Text)
+import           Data.Text.Encoding (decodeUtf8)
 import           Debug.Trace
 import           Snap.Core
 import           Snap.Util.FileServe
 import           Snap.Http.Server
 import           Text.Printf (printf)
-
--- import           Acid
--- import           Types
+import           Web.Stripe.Charge
+import           Web.Stripe.Client (SecretKey(..), StripeVersion(..))
+import           Web.Stripe.Token
+import           Acid
+import           Types
 
 main :: IO ()
-main = quickHttpServe site --bracket
---  (openLocalState initialGraph)
---  createCheckpointAndClose
---  (quickHttpServe . runReaderT site )
+main = bracket
+  (openLocalState (CSA mempty))
+  createCheckpointAndClose
+  (quickHttpServe . runReaderT site )
 
-site :: Snap ()
+site :: AcidSnap CSA ()
 site =
     route [ ("charge",            charge )
   --        , ("identifications",   handleIdentifications)
@@ -40,7 +44,7 @@ site =
           ] <|>
     serveDirectory "webform.jsexe"
 
---type AcidSnap st = ReaderT (AcidState st) Snap
+type AcidSnap st = ReaderT (AcidState st) Snap
 
 failWith :: MonadSnap m => Int -> String -> m ()
 failWith code msg = do
@@ -55,38 +59,61 @@ created = modifyResponse $ setResponseCode 201
 ok :: MonadSnap m => m ()
 ok = modifyResponse $ setResponseCode 200
 
-charge :: MonadSnap m => m ()
+key = SecretKey "sk_test_uC4GpgWwiU0Bo6nHbE5Tnc9i"
+stripeConfig = StripeConfig key "" V20110915d
+
+dollars = Currency "usd"
+
+amountToCharge :: Membership -> Amount
+amountToCharge = Amount . (*100) . _cost
+
+charge :: AcidSnap CSA ()
 charge =  method GET (failWith 405 "Method GET not supported for this URI")
             <|> method POST charge'
   where
     charge' = withRequest (recordAndCharge . rqParams) >> return ()
-    recordAndCharge (makeMembership -> Just m ) =
-      liftIO . putStrLn $ "Recieved charge: " ++ show m
+    recordAndCharge (makeMembership -> Just (m,tid) ) = do
+      st <- ask
+      liftIO . putStrLn $ "Received charge: " ++ show m
+      res <- runStripeT stripeConfig $
+        chargeTokenById tid (amountToCharge m) dollars Nothing Nothing 
+      case res of
+        Left failure -> do
+          errLog $ "Stripe Failure: " ++ show failure
+        Right charge -> do
+          update' st . NewMembership $ m { _payment = Just charge }
+          liftIO . putStrLn $ "Charge succeeded: " ++ show charge
+
     recordAndCharge params = do
       logError $ "Bad params: " <> (Char8.pack.show) params
       failWith 401 "Bad request"
 
-data Membership = Membership { shareholder :: String
-                             , vegShares   :: Int
-                             , eggShares   :: Int
-                             , fruitShares :: Int
-                             , cost        :: Int
-                             } deriving (Eq, Ord, Show)
-      
 membare :: Membership
-membare = Membership "" 0 0 0 0
+membare = Membership "" [] (Fall2015 (Fall 0 0 0)) 0 Nothing
 
-makeMembership :: Params -> Maybe Membership
+makeMembership :: Params -> Maybe (Membership, TokenId)
 makeMembership params = do
-  let readBS :: Read a => String -> [ByteString] -> [a]
-      readBS msg = trace msg $ fmap (read . Char8.unpack)
-  [nm  :: String] <- fmap Char8.unpack <$> Map.lookup "shareholder" params
-  [veg :: Int] <- readBS "veg\n" <$> Map.lookup "vegetableShares" params
-  [egg :: Int] <- readBS "eggs, precious\n"<$> Map.lookup "eggShares" params
-  [frt :: Int] <- readBS "nasty fruit\n" <$> Map.lookup "fruitShares" params
-  [p   :: Int] <- readBS "precious\n" <$> Map.lookup "cost" params
-  return $ Membership nm veg egg frt p
-      
+  let readBS :: Read a => [ByteString] -> [a]
+      readBS = fmap (read . Char8.unpack)
+  [tid] <- fmap (TokenId . decodeUtf8) <$> Map.lookup "stripeToken" params
+  [nm]  <- fmap Char8.unpack <$> Map.lookup "shareholder" params
+  [veg] <- readBS <$> Map.lookup "vegetableShares" params
+  [egg] <- readBS <$> Map.lookup "eggShares" params
+  [frt] <- readBS <$> Map.lookup "fruitShares" params
+  [p]   <- readBS <$> Map.lookup "cost" params
+  return $ ( Membership { _shareholder = nm
+                        , _alternates  = []
+                        , _season = Fall2015 (Fall { _vegetable = veg
+                                                   , _egg   = egg
+                                                   , _fruit = frt
+                                                   })
+                        , _cost = p
+                        , _payment = Nothing
+                        }
+           , tid )
+     
+errLog :: MonadSnap m => String -> m ()
+errLog = logError . Char8.pack 
 {-
 snapUpdate :: (Serialize a, UpdateEvent u, MethodState u ~ st)
            => (a -> u) -> AcidSnap st ()
