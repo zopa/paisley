@@ -1,10 +1,11 @@
 {-# LANGUAGE OverloadedStrings, GeneralizedNewtypeDeriving, TupleSections,
              TypeFamilies, FlexibleInstances, FlexibleContexts,
-             ScopedTypeVariables, ViewPatterns  #-}
+             ScopedTypeVariables, ViewPatterns, TemplateHaskell  #-}
 module Main where
 
 import           Control.Applicative
 import           Control.Exception
+import           Control.Lens
 import           Control.Monad (void)
 import           Control.Monad.Reader
 import           Control.Monad.IO.Class (liftIO)
@@ -12,6 +13,7 @@ import           Data.Acid
 import           Data.Acid.Advanced
 import           Data.Acid.Local
 import           Data.Monoid
+import           Data.Maybe (fromMaybe)
 import qualified Data.Map.Strict as Map
 import           Data.ByteString (ByteString)
 import qualified Data.ByteString.Char8 as Char8 (pack, unpack)
@@ -22,6 +24,8 @@ import           Debug.Trace
 import           Snap.Core
 import           Snap.Util.FileServe
 import           Snap.Http.Server
+import           System.Console.GetOpt
+import           System.Environment (getArgs)
 import           Text.Printf (printf)
 import           Web.Stripe.Charge
 import           Web.Stripe.Client (SecretKey(..), StripeVersion(..))
@@ -29,26 +33,57 @@ import           Web.Stripe.Token
 import           Acid
 import           Types
 
-main :: IO ()
-main = bracket
-  (openLocalState (CSA mempty))
-  createCheckpointAndClose
-  (quickHttpServe . runReaderT site )
+data Options = Options { _dataDir   :: FilePath
+                       , _clientDir :: FilePath
+                       -- , port      :: Int
+                       }
 
-site :: AcidSnap CSA ()
-site =
+makeLenses ''Options
+
+-- Stick our options into the "other" field of snap's Config as
+-- a function that transforms our Options type.
+options :: [ OptDescr (Maybe (Config Snap (Options -> Options))) ]
+options =
+    [ Option "d" ["dataDir"]   (ReqArg dd "DATADIR")
+            "Acid-state log location"
+    , Option "i" ["clientDir"] (ReqArg cd "CLIENTCODE")
+            "Client-side code location"
+    ]
+  where
+    dd dir = Just $ setOther (dataDir   .~ dir) mempty
+    cd dir = Just $ setOther (clientDir .~ dir) mempty
+
+defOpts = Options "./state" "./webform.jsexe"
+
+parseArgs :: IO (Config Snap (Options -> Options))
+parseArgs = extendedCommandLineConfig (options ++ optDescrs bc) (.) bc
+  where
+    bc :: Config Snap a
+    bc = mempty
+
+main :: IO ()
+main = do
+  cfg  <- parseArgs
+  let opts = fromMaybe id (getOther cfg) $ defOpts
+  bracket
+    (openLocalStateFrom (_dataDir opts) (CSA mempty))
+    createCheckpointAndClose
+    (httpServe cfg . runReaderT (site $ _clientDir opts))
+
+site :: FilePath -> AcidSnap CSA ()
+site clientDir' =
     route [ ("charge",            charge )
   --        , ("identifications",   handleIdentifications)
   --        , ("relationships",     handleRelationships)
   --        , ("resources",         serveDirectory "resources")
           ] <|>
-    serveDirectory "webform.jsexe"
+    serveDirectory (clientDir' ++ "/bin/paisley-client.jsexe")
 
 type AcidSnap st = ReaderT (AcidState st) Snap
 
 failWith :: MonadSnap m => Int -> String -> m ()
 failWith code msg = do
-  modifyResponse (setResponseCode code) 
+  modifyResponse (setResponseCode code)
   writeBS (Char8.pack msg)
 
 -- TODO [5/10/2015]: We should be returning the location. And (maybe) checking if
@@ -76,7 +111,7 @@ charge =  method GET (failWith 405 "Method GET not supported for this URI")
       st <- ask
       liftIO . putStrLn $ "Received charge: " ++ show m
       res <- runStripeT stripeConfig $
-        chargeTokenById tid (amountToCharge m) dollars Nothing Nothing 
+        chargeTokenById tid (amountToCharge m) dollars Nothing Nothing
       case res of
         Left failure -> do
           errLog $ "Stripe Failure: " ++ show failure
@@ -111,9 +146,9 @@ makeMembership params = do
                         , _payment = Nothing
                         }
            , tid )
-     
+
 errLog :: MonadSnap m => String -> m ()
-errLog = logError . Char8.pack 
+errLog = logError . Char8.pack
 {-
 snapUpdate :: (Serialize a, UpdateEvent u, MethodState u ~ st)
            => (a -> u) -> AcidSnap st ()
