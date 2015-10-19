@@ -34,7 +34,7 @@ in
 
       dataDir = mkOption {
         type = types.path;
-        default = "/var/db/acidstate/paisley";
+        default = "/var/db/acid/paisley";
         description = ''
           Location of the AcidState log.
         '';
@@ -52,9 +52,10 @@ in
   config = mkIf config.services.paisley.enable {
 
     users.extraGroups.paisley.name = "paisley";
+    users.extraGroups.acid.name = "acid";
     users.extraUsers.paisley = {
       name = "paisley";
-      group = "paisley";
+      group = "acid";
       description = "Paisley payments form user";
     };
 
@@ -67,9 +68,13 @@ in
       path = [ server client ];
 
       preStart = ''
+        ACIDDIR=`dirname ${cfg.dataDir}`
+        if ! test -e $ACIDDIR
+          mkdir -m 3770  $ACIDDIR
+          chown -R :acid $ACIDDIR
         if ! test -e ${cfg.dataDir}; then
-          mkdir -m 0700 -p ${cfg.dataDir}
-          chown -R paisley ${cfg.dataDir}
+          mkdir -m 3700 ${cfg.dataDir}
+          chown -R paisley:paisley ${cfg.dataDir}
         fi
       '';
 
