@@ -1,6 +1,6 @@
 { mkDerivation, acid-state, base, bytestring, cereal, containers
-, mtl, paisley-core, snap-core, snap-server, stdenv, stripe, text
-, transformers
+, lens , mtl, paisley-core, snap-core, snap-server, stdenv, stripe
+, text, transformers
 }:
 mkDerivation {
   pname = "paisley-server";
@@ -9,8 +9,8 @@ mkDerivation {
   isLibrary = false;
   isExecutable = true;
   executableHaskellDepends = [
-    acid-state base bytestring cereal containers mtl paisley-core
-    snap-core snap-server stripe text transformers
+    acid-state base bytestring cereal containers lens mtl
+    paisley-core snap-core snap-server stripe text transformers
   ];
   license = stdenv.lib.licenses.unfree;
 }

@@ -32,7 +32,7 @@ library
        base >=4.8 && <4.9
     ,  lens >=4.12 && <4.13
     ,  mtl >=2.2 && <2.3
-    ,  acid-state >=0.12 && <0.13
+    ,  acid-state
     ,  containers >=0.5 && <0.6
     ,  syb >=0.5 && <0.6
     ,  safecopy >=0.8 && <0.9
