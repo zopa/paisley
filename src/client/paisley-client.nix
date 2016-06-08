@@ -10,5 +10,12 @@ mkDerivation {
   executableHaskellDepends = [
     base containers data-default file-embed lens reflex reflex-dom text
   ];
-  license = stdenv.lib.licenses.unfree;
+  license = {
+    fullName = "Unreleased";
+    free = true; # Stop yelling at me about allowUnfree
+  };
+  postBuild = ''
+    mkdir -p $out/css
+    cp -r ./css/* $out/css
+  '';  
 }

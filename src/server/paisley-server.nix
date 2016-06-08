@@ -12,5 +12,8 @@ mkDerivation {
     acid-state base bytestring cereal containers lens mtl
     paisley-core snap-core snap-server stripe text transformers
   ];
-  license = stdenv.lib.licenses.unfree;
+  license = {
+    fullName = "Unreleased";
+    free = true; # Stop yelling at me about allowUnfree
+  };
 }

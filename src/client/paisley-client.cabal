@@ -19,6 +19,13 @@ executable paisley-client
   main-is:             Main.hs
   -- other-modules:       
   other-extensions:    RecursiveDo, ScopedTypeVariables, TemplateHaskell, OverloadedStrings
-  build-depends:       base >=4.8 && <4.9, lens, containers >=0.5 && <0.6, data-default >=0.5 && <0.6, reflex >=0.3 && <0.4, reflex-dom >=0.2 && <0.3, file-embed >=0.0 && <0.1, text >=1.2 && <1.3
+  build-depends:       base
+                     , lens
+                     , containers
+                     , data-default
+                     , reflex
+                     , reflex-dom
+                     , file-embed
+                     , text
   -- hs-source-dirs:      
   default-language:    Haskell2010

@@ -9,5 +9,8 @@ mkDerivation {
     acid-state base cereal cereal-text containers lens mtl safecopy
     stripe syb time
   ];
-  license = stdenv.lib.licenses.unfree;
+  license = {
+    fullName = "Unreleased";
+    free = true; # Stop yelling at me about allowUnfree
+  };
 }
