@@ -69,11 +69,12 @@ in
 
       preStart = ''
         ACIDDIR=`dirname ${cfg.dataDir}`
-        if ! test -e $ACIDDIR
-          mkdir -m 3770  $ACIDDIR
-          chown -R :acid $ACIDDIR
+        if ! test -e $ACIDDIR; then
+          mkdir -pm 3770 $ACIDDIR
+        fi
+        chown :acid $ACIDDIR
         if ! test -e ${cfg.dataDir}; then
-          mkdir -m 3700 ${cfg.dataDir}
+          mkdir -m 700 ${cfg.dataDir}
           chown -R paisley:paisley ${cfg.dataDir}
         fi
       '';
@@ -84,7 +85,7 @@ in
             -d ${cfg.dataDir} -i ${client} -p ${toString cfg.port}
         '';
         User = "paisley";
-        Group = "paisley";
+        SupplementaryGroups = "acid";
         PermissionsStartOnly = true; # We need the prestart step to run as root, so as to create the data directory.
       };
 
